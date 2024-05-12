@@ -1,0 +1,28 @@
+[GENERAL]
+PRINT_CONFIG = false
+TIMEZONE = UTC ; https://pynative.com/list-all-timezones-in-python/
+CHANNEL_LIST = LongFast,Private
+
+[MQTT]
+SERVER = 192.168.0.251
+PORT = 1883
+USERNAME = ***your mqtt user***
+PASSWORD = ***your mqtt password***
+
+[INFLUXDB]
+TOKEN = ***Influx QL token string***
+ORG = ***Influx QL organisation string***
+BUCKET = ***Influx QL buket string***
+
+[LOG]
+PRINT_ALL_INCOMING = true
+VOLTAGE = true
+MESSAGE = true
+POSITION = false
+HOP_LIMIT = true
+HOPS_AWAY = true
+TYPE = true
+CHUTIL = true
+SNR = true
+RSSI = true
+TRACEROUTE = true
