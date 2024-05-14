@@ -85,34 +85,10 @@ def write_log(string):
     log.close        
 
 node_db = read_nodedb()
-print(node_db)
+print(f"\n\n***********  Starting Meshtastic MQTT Watcher ************\n\n")
+print(f"Total entries in node_db: {len(node_db)}")
+write_log(f"Starting Meshtastic MQTT Watcher | node_db entries {len(node_db)}")
 
-
-# def publish_packet(data):
-
-#     feed = aio.feeds(AIO_FEED_GROUP+".messages")
-#     if (data['from'] in node_db):
-#         data['fname'] = node_db[data['from']]
-#     if (data['to'] in node_db):
-#         data['tname'] = node_db[data['to']]
-#     # trim down the data. we really only want to see the message content
-#     if 'stamp' in data:
-#         stamp = datetime.fromtimestamp(data['timestamp'],my_timezone).strftime('%Y-%m-%d %H:%M:%S')
-#     else:
-#         current_time = datetime.now()  # Assuming UTC time
-#         # Convert to the desired timezone (e.g., 'America/Los_Angeles' or your preferred timezone)
-#         current_time = current_time.astimezone(my_timezone)
-#         stamp = current_time.strftime('%Y-%m-%d %H:%M:%S')
-
-#     trimmed = { 
-#         'from' : data.get('fname',None) or data.get('from'),
-#         'to'    : data.get('tname',None) or data.get('to'),
-#         'channel' : data['channel'],
-#         'message' : data['payload'],
-#         'stamp' : stamp,
-#         }
-#     aio.send_data(feed.key, json.dumps(trimmed, indent=4))
-#     print(trimmed)
 
 def on_message(client, userdata, message):
     global inlfux_string
@@ -143,27 +119,20 @@ def on_message(client, userdata, message):
     #         print("error in publish:",e)
 
 
-    # "payload":{"altitude":113,"latitude_i":208759687,"longitude_i":-1565037665
-    metadata = None        
-    if data['type'] == 'position' and LOG_POSITION:
-        metadata = {
-            'lat': data['payload']['latitude_i'] / 10000000, #40.726190,
-            'lon': data['payload']['longitude_i'] / 10000000, #-74.005334,
-            'ele': data['payload'].get('altitude',None),
-            'created_at': str(datetime.now(my_timezone)),
-        }
+
     # update node_db if needed
     if data['type'] == 'nodeinfo':
-        # add to the node_db if we haven't seen it before
-        if str(data['from']) not in node_db:
-            node = str(data['from'])
-            name_short = data['payload']['shortname']
-            name_long = data['payload']['longname']
-            if "\\x00" in name_long or "\\u0000" in name_long or "\x00" in name_long:  # json don't like emojis
-                pass
-            name_long = name_long.replace('\x00','').replace('\\u0000','').replace('\\x00','').replace(' ','-').replace('.','-').replace('---','-').replace('--','-')
+        node = str(data['from'])
+        name_short = data['payload']['shortname']
+        #replace all emojis in teh Long name
+        name_long = data['payload']['longname'].replace('\x00','').replace('\\u0000','').replace('\\x00','').replace(' ','-').replace('.','-').replace('---','-').replace('--','-')
+        # add to the node_db if we haven't seen it before or the name has changed
+        if node not in node_db:
             write_nodedb(node, name_short, name_long)
             write_log(f"New Node found: {node}: {name_long} | {name_short} |")
+        elif str(data['from']) in node_db and name_long != node_db.get(node)[1] or name_short != node_db.get(node)[0]:
+            write_nodedb(node, name_short, name_long)
+            write_log(f"Node name updated: {node}: {name_long} | {name_short} |")
 
     if str(data['from']) in node_db:
         node = str(data['from']) #will use node_db namesif we have them
@@ -173,27 +142,35 @@ def on_message(client, userdata, message):
     else: # otherwise we use node ID
         node = str(data['from'])
         name_short = 'ukn'
-        name_long = 'ukn'
+        name_long = node
         print(f"**** Nodeinfo not found for {node}")
     try:
-        if LOG_RSSI and 'rssi' in data and data['rssi'] != 0 and data['sender'] == '!da656a30':
-            # publish_rssi(data)
-            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} rssi={data['rssi']}" # adding come after each measurement
-            publish_influx(inlfux_string)
-        if LOG_SNR and 'snr' in data and data['snr'] != 0 and data['sender'] == '!da656a30':
-            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} snr={data['snr']}" # adding come after each measurement
+            # "payload":{"altitude":113,"latitude_i":208759687,"longitude_i":-1565037665      
+        if data['type'] == 'position' and LOG_POSITION:
+            lat = data['payload']['latitude_i'] / 10000000, #40.726190,
+            lon = data['payload']['longitude_i'] / 10000000, #-74.005334,
+            alt = data['payload'].get('altitude',None)
+            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} lat={lat},lon={lon},alt={alt}" # adding come after each measurement
             publish_influx(inlfux_string)
 
-        if LOG_VOLTAGE and 'payload' in data and 'voltage' in data['payload'] and data['payload'].get('voltage',0) != 0 and data['sender'] == '!da656a30':
-            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} batt={data['payload'].get('voltage',0)}" # 
+        if LOG_RSSI and 'rssi' in data and data['rssi'] != 0 and data['sender'] == '!da656a30':
+            # publish_rssi(data)
+            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} rssi={data['rssi']}" # adding come after each measurement
             publish_influx(inlfux_string)
+        if LOG_SNR and 'snr' in data and data['snr'] != 0 and data['sender'] == '!da656a30':
+            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} snr={data['snr']}" # adding come after each measurement
+            publish_influx(inlfux_string)
+        # Not interested n Voltages
+        # if LOG_VOLTAGE and 'payload' in data and 'voltage' in data['payload'] and data['payload'].get('voltage',0) != 0 and data['sender'] == '!da656a30':
+        #     inlfux_string = f"host={node},name_long={name_long},name_short={name_short} batt={data['payload'].get('voltage',0)}" # 
+        #     publish_influx(inlfux_string)
 
         if LOG_HOP_LIMIT and 'hop_limit' in data and data['sender'] == '!e2e18990' and data['from'] != 3664079408 and data['from'] != 3806431632:
             inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} hop_limit={data['hop_limit']}"
             publish_influx(inlfux_string)
             
         if LOG_HOPS_AWAY and 'hops_away' in data and data['sender'] == '!da656a30' and data['from'] != 3664079408 and data['from'] != 3806431632:
-            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} hops_away={data['hops_away']}" # 
+            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} hops_away={data['hops_away']}" # 
             publish_influx(inlfux_string)
 
         if LOG_TYPE and 'type' in data and data['sender'] == '!da656a30' and data['from'] != 3664079408 and data['from'] != 3806431632:
@@ -207,11 +184,12 @@ def on_message(client, userdata, message):
                 packet_type = 'traceroute'
                 to_node = str(data['to'])
                 to_name_long = "Unknown"
-                if to_node in node_db:
+                if to_node in ["635069965", "3664079408", "3806431632"]: #Someone ping to my nodes
                     to_name_long = node_db.get(to_node)[1]
+                    write_log(f"Traceroute from: {node} - {name_long} ===> {to_node} - {to_name_long}")  # will try to catch who sent it to who and store it in the local log file
                 else:
-                    to_name_long = "Unknown"
-                write_log(f"Traceroute from: {node} - {name_long} ===> {to_node} - {to_name_long}")  # will try to catch who sent it to who and store it in the local log file
+                    pass
+                
             inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short},packet_type={packet_type} count=1"
             publish_influx(inlfux_string)
 
