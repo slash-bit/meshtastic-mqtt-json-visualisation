@@ -72,10 +72,7 @@ def read_nodedb():
 # node_db stored in file , new nodes added to this files as the come, the file will be read at the start of the script
 def write_nodedb(node, name_short, name_long):
     node_db[node] = [name_short, name_long]
-    # with open(node_db_filename, 'r') as json_file:
-    #     node_db_temp = json.load(json_file)
-    # new_node = {node: [name_short, name_long]}
-    # node_db_temp.update(new_node)
+
     with open(node_db_filename, 'w') as json_file:
         json.dump(node_db, json_file)
 
@@ -141,26 +138,27 @@ def on_message(client, userdata, message):
         print(f"""Found Node in the node_db, will use {name_short} and {name_long} for {node}""")
     else: # otherwise we use node ID
         node = str(data['from'])
-        name_short = 'ukn'
+        name_short = 'ukn'  
         name_long = node
         print(f"**** Nodeinfo not found for {node}")
     try:
             # "payload":{"altitude":113,"latitude_i":208759687,"longitude_i":-1565037665      
-        if data['type'] == 'position' and LOG_POSITION:
-            lat = data['payload']['latitude_i'] / 10000000, #40.726190,
-            lon = data['payload']['longitude_i'] / 10000000, #-74.005334,
-            alt = data['payload'].get('altitude',None)
-            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} lat={lat},lon={lon},alt={alt}" # adding come after each measurement
+        if LOG_POSITION and data['type'] == 'position':
+            lat = data['payload']['latitude_i'] / 10000000 #40.726190,
+            lon = data['payload']['longitude_i'] / 10000000 #-74.005334,
+            alt = data['payload'].get('altitude', 0)
+            print(f"Got position packet: {node} | {name_long} | lon {lon} | lat {lat} | alt {alt}")
+            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} lat={lat},lon={lon},alt={alt}" # adding come after each measurement
             publish_influx(inlfux_string)
 
         if LOG_RSSI and 'rssi' in data and data['rssi'] != 0 and data['sender'] == '!da656a30':
             # publish_rssi(data)
-            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} rssi={data['rssi']}" # adding come after each measurement
+            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} rssi={data['rssi']}" # adding come after each measurement
             publish_influx(inlfux_string)
         if LOG_SNR and 'snr' in data and data['snr'] != 0 and data['sender'] == '!da656a30':
-            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} snr={data['snr']}" # adding come after each measurement
+            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} snr={data['snr']}" # adding come after each measurement
             publish_influx(inlfux_string)
-        # Not interested n Voltages
+        # Not interested in Voltages
         # if LOG_VOLTAGE and 'payload' in data and 'voltage' in data['payload'] and data['payload'].get('voltage',0) != 0 and data['sender'] == '!da656a30':
         #     inlfux_string = f"host={node},name_long={name_long},name_short={name_short} batt={data['payload'].get('voltage',0)}" # 
         #     publish_influx(inlfux_string)
@@ -170,7 +168,7 @@ def on_message(client, userdata, message):
             publish_influx(inlfux_string)
             
         if LOG_HOPS_AWAY and 'hops_away' in data and data['sender'] == '!da656a30' and data['from'] != 3664079408 and data['from'] != 3806431632:
-            inlfux_string = f"host={node},name_long={name_long},name_short={name_short} hops_away={data['hops_away']}" # 
+            inlfux_string = f"meshtastic,host={node},name_long={name_long},name_short={name_short} hops_away={data['hops_away']}" # 
             publish_influx(inlfux_string)
 
         if LOG_TYPE and 'type' in data and data['sender'] == '!da656a30' and data['from'] != 3664079408 and data['from'] != 3806431632:
@@ -184,7 +182,7 @@ def on_message(client, userdata, message):
                 packet_type = 'traceroute'
                 to_node = str(data['to'])
                 to_name_long = "Unknown"
-                if to_node in ["635069965", "3664079408", "3806431632"]: #Someone ping to my nodes
+                if to_node in ["635069965", "3664079408", "3806431632"]: #Log it if Someone pinging to my nodes
                     to_name_long = node_db.get(to_node)[1]
                     write_log(f"Traceroute from: {node} - {name_long} ===> {to_node} - {to_name_long}")  # will try to catch who sent it to who and store it in the local log file
                 else:
